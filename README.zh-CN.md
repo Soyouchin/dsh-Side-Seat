@@ -56,7 +56,7 @@ L4 较真）和模式（解释 / 质疑）。答案按会话保存，重开面�
 ```bash
 dsh plugin add /absolute/path/to/side-seat
 # 仓库发布后
-dsh plugin add https://github.com/OWNER/dsh-side-seat
+dsh plugin add https://github.com/Soyouchin/dsh-Side-Seat
 ```
 
 安装后需要重启 DSH（客户端那一半也可以只刷新页面）。

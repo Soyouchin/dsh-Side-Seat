@@ -57,7 +57,7 @@ Until it is on npm, install it from a local checkout or a git URL.
 ```bash
 dsh plugin add /absolute/path/to/side-seat
 # or, once the repository is published
-dsh plugin add https://github.com/OWNER/dsh-side-seat
+dsh plugin add https://github.com/Soyouchin/dsh-Side-Seat
 ```
 
 The bundle contributes one host plugin and one web-client plugin; DSH installs both. A DSH restart (or a page

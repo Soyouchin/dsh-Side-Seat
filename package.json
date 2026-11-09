@@ -15,12 +15,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/dsh-side-seat.git"
+    "url": "git+https://github.com/Soyouchin/dsh-Side-Seat.git"
   },
   "bugs": {
-    "url": "https://github.com/OWNER/dsh-side-seat/issues"
+    "url": "https://github.com/Soyouchin/dsh-Side-Seat/issues"
   },
-  "homepage": "https://github.com/OWNER/dsh-side-seat#readme",
+  "homepage": "https://github.com/Soyouchin/dsh-Side-Seat#readme",
   "engines": {
     "node": ">=20"
   },
@@ -54,7 +54,9 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": ["@deepseek-ai/dsh-client-ui-sidebar-right"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
     }
   }
 }
