@@ -25,7 +25,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node test/core.test.mjs && node test/integration.test.mjs && node test/client.test.mjs"
+    "test": "node test/core.test.mjs && node test/integration.test.mjs && node test/client.test.mjs && node test/package.test.mjs"
   },
   "exports": {
     ".": "./index.js",
