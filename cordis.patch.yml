@@ -1,0 +1,6 @@
+- insert:
+    - id: side-seat
+      name: 'dsh-side-seat'
+      config:
+        level: 3
+        mode: explain

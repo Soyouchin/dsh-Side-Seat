@@ -1,0 +1,9 @@
+{
+  "meta": {
+    "title": "Side seat",
+    "description": "Ask about this session without putting the answer into it."
+  },
+  "command": {
+    "help": "Ask this session a question; the answer stays out of it."
+  }
+}
