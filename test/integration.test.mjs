@@ -222,6 +222,71 @@ test('here lists the anchorable messages with their event numbers', async () => 
   })
 })
 
+test('a reasoning-only answer retries with a larger budget instead of failing', async () => {
+  await scenario(async ({ ctx, state, run }) => {
+    let call = 0
+    ctx.llm.stream = (options) => {
+      call += 1
+      state.llmCalls.push(options)
+      return (async function * () {
+        if (call === 1) {
+          // Thinking, then the budget runs out before any text.
+          yield { type: 'reasoning-delta', index: 0, text: '先想一下'.repeat(20) }
+          yield { type: 'usage', usage: { inputTokens: 900, outputTokens: 200 } }
+          yield { type: 'finish', reason: { kind: 'max-tokens' } }
+          return
+        }
+        yield { type: 'text-delta', index: 0, text: '重试后的答案 [10]' }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      })()
+    }
+
+    const result = await run('这个 p 值怎么来的？')
+    assert.equal(result.kind, 'success')
+    assert.match(result.text, /重试后的答案/)
+    assert.equal(state.llmCalls.length, 2, 'the retry must happen once')
+    assert.ok(state.llmCalls[1].maxTokens > state.llmCalls[0].maxTokens, 'the retry gets a larger budget')
+  })
+})
+
+test('a transient empty completion is retried once with the same budget', async () => {
+  await scenario(async ({ ctx, state, run }) => {
+    let call = 0
+    ctx.llm.stream = (options) => {
+      call += 1
+      state.llmCalls.push(options)
+      return (async function * () {
+        if (call === 1) {
+          yield { type: 'finish', reason: { kind: 'stop' } }
+          return
+        }
+        yield { type: 'text-delta', index: 0, text: '第二次才有内容 [10]' }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+      })()
+    }
+
+    const result = await run('问题')
+    assert.equal(result.kind, 'success')
+    assert.match(result.text, /第二次才有内容/)
+    assert.equal(state.llmCalls.length, 2)
+    assert.equal(state.llmCalls[0].maxTokens, state.llmCalls[1].maxTokens, 'a plain retry does not inflate the budget')
+  })
+})
+
+test('an empty answer that survives the retry says why', async () => {
+  await scenario(async ({ ctx, run }) => {
+    ctx.llm.stream = () => (async function * () {
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    })()
+
+    const result = await run('问题')
+    assert.equal(result.kind, 'error')
+    assert.match(result.text, /空回答/)
+    assert.match(result.text, /finish=stop/)
+    assert.match(result.text, /没有产出任何文本/)
+  })
+})
+
 test('export writes a markdown file with the question, the answer and its provenance', async () => {
   await scenario(async ({ run }) => {
     await run('这个 p 值怎么来的？')

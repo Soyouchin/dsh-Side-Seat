@@ -123,11 +123,11 @@ config:
 ## 验证
 
 ```bash
-npm test                      # 56 项断言，四个套件
+npm test                      # 59 项断言，四个套件
 node tools/replay.mjs 12000   # 用真实会话日志跑上下文包
 ```
 
-- **56 项断言全绿**：`test/core.test.mjs`（31）、`test/integration.test.mjs`（12）、`test/client.test.mjs`（8，
+- **59 项断言全绿**：`test/core.test.mjs`（31）、`test/integration.test.mjs`（15）、`test/client.test.mjs`（8，
   真的执行客户端模块）、`test/package.test.mjs`（5，打包完整性：每个 export 都有对应文件、patch 插入本包、
   客户端 id 与包名一致、图标自包含）。
 - **真机跑通**：命令路径端到端约 1.4 秒；面板的 ping 往返通过网关。

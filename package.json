@@ -1,6 +1,6 @@
 {
   "name": "dsh-side-seat",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Ask this session a question without putting the answer into it.",

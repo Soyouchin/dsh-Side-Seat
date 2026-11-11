@@ -132,12 +132,12 @@ host-vs-client endpoint parity check), so they fail in `npm test` rather than in
 ## Verification
 
 ```bash
-npm test     # 56 assertions across four suites
+npm test     # 59 assertions across four suites
 node tools/replay.mjs 12000   # run the context pack builder against a real session log
 ```
 
-- **56 assertions, all passing**: `test/core.test.mjs` (31 — layered digest, hard budget, level contracts,
-  distillation card, store isolation, service binding/signature), `test/integration.test.mjs` (12 — command path,
+- **59 assertions, all passing**: `test/core.test.mjs` (31 — layered digest, hard budget, level contracts,
+  distillation card, store isolation, service binding/signature), `test/integration.test.mjs` (15 — command path,
   zero injection, two-step promotion, export, diagnostics), `test/client.test.mjs` (8 — the client module executed
   against a stub loader and React, codec shape, arity, anchor wiring, host/client parity), `test/package.test.mjs`
   (5 — every export resolves to a shipped file, the patch inserts this package, the client id matches the package

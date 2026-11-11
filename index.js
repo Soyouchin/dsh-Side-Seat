@@ -22,7 +22,7 @@ import { createSideSeatService, SERVICE_KEY } from './lib/remote-service.js'
 export const name = 'side-seat'
 export const inject = ['commands', 'sessionQuery', 'llm']
 
-export const VERSION = '0.6.1'
+export const VERSION = '0.7.0'
 
 const DEFAULTS = {
   provider: '',
@@ -32,6 +32,7 @@ const DEFAULTS = {
   budgetTokens: 12000,
   maxThreads: 20,
   maxTokens: 1600,
+  reasoningEffort: '',
   selfTest: false,
   storeDir: join(homedir(), '.dsh', 'side-seat'),
 }
@@ -97,7 +98,13 @@ export function apply (ctx, config = {}) {
 
   if (settings.selfTest) {
     const timer = setTimeout(() => {
-      runSelfTest(ctx, settings, { remoteStatus, typertStatus }).catch(() => {})
+      runSelfTest(ctx, settings, {
+        remoteStatus,
+        typertStatus,
+        resolveModel: () => resolveModel(ctx, settings),
+        reasoningEffort: settings.reasoningEffort || undefined,
+        probeMaxTokens: 200,
+      }).catch(() => {})
     }, 1500)
     ctx.effect(() => () => clearTimeout(timer))
   } else {
@@ -643,30 +650,75 @@ function resolveModel (ctx, settings) {
   )
 }
 
+/**
+ * One model call, with the two failure modes the side seat actually hits:
+ * a reasoning model spending the whole budget before it writes anything, and a
+ * silence that is not a budget problem at all. Both used to collapse into
+ * "模型返回了空回答" with no way to tell which had happened.
+ */
 async function complete (ctx, settings, { system, user, signal, maxTokens }) {
   const { provider, model } = resolveModel(ctx, settings)
-  const stream = ctx.llm.stream({
-    provider,
-    model,
-    system,
-    messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
-    maxTokens: maxTokens ?? settings.maxTokens,
-    signal,
-  })
+  const budget = maxTokens ?? settings.maxTokens
 
-  let text = ''
-  let usage
-  for await (const chunk of stream) {
-    if (chunk.type === 'text-delta') text += chunk.text
-    else if (chunk.type === 'usage') usage = chunk.usage
-    else if (chunk.type === 'finish') {
-      const reason = chunk.reason
-      if (reason?.kind === 'error') throw new Error(reason.failure?.message ?? '模型请求失败')
-      if (reason?.kind === 'aborted') throw new Error('请求被取消')
+  const attempt = async (limit) => {
+    const stream = ctx.llm.stream({
+      provider,
+      model,
+      system,
+      messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
+      maxTokens: limit,
+      ...(settings.reasoningEffort ? { reasoningEffort: settings.reasoningEffort } : {}),
+      signal,
+    })
+
+    let text = ''
+    let reasoning = 0
+    let usage
+    let finish = null
+    let blocker
+    for await (const chunk of stream) {
+      if (chunk.type === 'text-delta') text += chunk.text
+      else if (chunk.type === 'reasoning-delta') reasoning += chunk.text.length
+      else if (chunk.type === 'usage') usage = chunk.usage
+      else if (chunk.type === 'finish') {
+        finish = chunk.reason?.kind ?? null
+        if (chunk.reason?.kind === 'error') throw new Error(chunk.reason.failure?.message ?? '模型请求失败')
+        if (chunk.reason?.kind === 'aborted') throw new Error('请求被取消')
+        if (chunk.reason?.kind === 'max-tokens') blocker = 'max-tokens'
+      }
     }
+    return { text: text.trim(), reasoning, usage, finish, blocker }
   }
-  if (!text.trim()) throw new Error('模型返回了空回答')
-  return { text: text.trim(), usage }
+
+  const first = await attempt(budget)
+  if (first.text) return { text: first.text, usage: first.usage }
+
+  // An empty completion is rare and usually transient (a provider hiccup, a
+  // dropped content block). A reasoning-heavy model needs a bigger budget
+  // instead, so the two cases retry differently — but both retry once.
+  const retryBudget = first.finish === 'max-tokens' || first.reasoning > 0
+    ? Math.min(8000, Math.max(budget * 2, 3000))
+    : budget
+  try {
+    const retry = await attempt(retryBudget)
+    if (retry.text) return { text: retry.text, usage: retry.usage }
+  } catch {
+    // A provider that caps maxTokens rejects the larger budget; the original
+    // diagnosis below is more useful than that validation error.
+  }
+
+  const detail = [
+    `finish=${first.finish ?? 'unknown'}`,
+    `reasoning=${first.reasoning} 字`,
+    `budget=${budget}`,
+    first.usage ? `用量 ${first.usage.inputTokens ?? '?'}/${first.usage.outputTokens ?? '?'}` : '无用量',
+  ].join(' · ')
+  throw new Error(
+    `模型返回了空回答（${detail}）。` +
+    (first.reasoning > 0
+      ? '看起来模型把预算都用在思考上了：可以调大 maxTokens，或把 config.reasoningEffort 设为 low/none。'
+      : '没有产出任何文本，也不是预算问题：检查 config.provider/model 是否指向可用的路由。'),
+  )
 }
 
 export { estimateTokens }

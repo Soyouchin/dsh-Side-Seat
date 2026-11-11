@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0
+
+- An empty completion is retried once instead of failing the question. A
+  reasoning-heavy empty retries with a larger budget; a plain empty retries
+  as-is, because a dropped content block is usually transient.
+- The empty-answer error now reports the finish reason, how much reasoning was
+  produced, the budget and the usage, and which knob to turn. It used to be a
+  bare "模型返回了空回答" that could mean three different things.
+- New config `reasoningEffort` (unset = model default). `selftest` additionally
+  records a raw chunk histogram of one tiny model call, which is how the
+  empty-completion cause was identified here.
+
 ## 0.6.1
 
 - Move the per-message entry from the turn tail into the assistant action row
