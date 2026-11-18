@@ -99,8 +99,10 @@ session log ──(sessionQuery)──▶ context pack ──▶ one llm.stream(
   list, with a hardcoded tool allow-list and a multi-second agent loop); a fork copies the whole context. A plain
   question needs one model call with a prepared context pack.
 - **The context pack is layered and hard-capped**: the anchor's neighbourhood verbatim, a one-line-per-message
-  skeleton, an index of the questions asked, and a hard token budget enforced by three degradation steps plus a
-  character-level truncation. Real session, 1 800 events: ~4 200 tokens of 12 000.
+  skeleton, **a retrieved layer that searches the whole log by the words in your question**, an index of the
+  questions asked, and a hard token budget enforced by three degradation steps plus a character-level truncation.
+  Real session, 1 800 events: ~4 200 tokens of 12 000. The retrieved layer is what makes long sessions answerable:
+  the anchor window only covers a few events, and the skeleton is one line per message.
 - **Zero pollution by construction**: no session is created, no tool is registered, no event is appended. The only
   channel back is `to-main`, which delivers one framed card (`【旁听席提炼 · 非用户原话 · 未经主会话验证】`) as a
   user-role message, after a preview step, because the log is append-only and cannot be un-sent.
@@ -132,13 +134,14 @@ host-vs-client endpoint parity check), so they fail in `npm test` rather than in
 ## Verification
 
 ```bash
-npm test     # 59 assertions across four suites
+npm test     # 68 assertions across four suites
 node tools/replay.mjs 12000   # run the context pack builder against a real session log
 ```
 
-- **59 assertions, all passing**: `test/core.test.mjs` (31 — layered digest, hard budget, level contracts,
-  distillation card, store isolation, service binding/signature), `test/integration.test.mjs` (15 — command path,
-  zero injection, two-step promotion, export, diagnostics), `test/client.test.mjs` (8 — the client module executed
+- **68 assertions, all passing**: `test/core.test.mjs` (37 — layered digest, question-driven retrieval, hard budget,
+  level contracts, distillation card, store isolation, service binding/signature), `test/integration.test.mjs`
+  (18 — command path, zero injection, two-step promotion, retrieval wiring, markdown vs plain text, export,
+  diagnostics), `test/client.test.mjs` (8 — the client module executed
   against a stub loader and React, codec shape, arity, anchor wiring, host/client parity), `test/package.test.mjs`
   (5 — every export resolves to a shipped file, the patch inserts this package, the client id matches the package
   name, the icon is self-contained).

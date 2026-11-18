@@ -22,7 +22,7 @@ import { createSideSeatService, SERVICE_KEY } from './lib/remote-service.js'
 export const name = 'side-seat'
 export const inject = ['commands', 'sessionQuery', 'llm']
 
-export const VERSION = '0.7.0'
+export const VERSION = '0.8.0'
 
 const DEFAULTS = {
   provider: '',
@@ -32,6 +32,8 @@ const DEFAULTS = {
   budgetTokens: 12000,
   maxThreads: 20,
   maxTokens: 1600,
+  retrievalTokens: 3000,
+  retrievalHits: 8,
   reasoningEffort: '',
   selfTest: false,
   storeDir: join(homedir(), '.dsh', 'side-seat'),
@@ -360,7 +362,7 @@ function pickCurrent (threads) {
  * One question, one answer. Returns the facts the command formats into text and
  * the Remote hands to the panel as JSON — same computation, two renderings.
  */
-async function askStructured (ctx, store, settings, { sessionId, question, level, mode, anchorSeq, forceNew, signal }) {
+async function askStructured (ctx, store, settings, { sessionId, question, level, mode, anchorSeq, forceNew, signal, format }) {
   const { events, throughSeq } = await readLog(ctx, sessionId)
   if (events.length === 0) {
     return { empty: true, text: '这个会话还没有可读的内容。', footer: '' }
@@ -371,6 +373,9 @@ async function askStructured (ctx, store, settings, { sessionId, question, level
     anchorSeq: effectiveAnchor,
     budgetTokens: settings.budgetTokens,
     throughSeq,
+    question,
+    retrievalTokens: settings.retrievalTokens,
+    retrievalHits: settings.retrievalHits,
   })
 
   let thread
@@ -383,7 +388,12 @@ async function askStructured (ctx, store, settings, { sessionId, question, level
     }, settings.maxThreads)
   }
 
-  const system = buildSystemPrompt({ level, mode, snapshot: { throughSeq, anchorSeq: effectiveAnchor } })
+  const system = buildSystemPrompt({
+    level,
+    mode,
+    format: format === 'panel' ? 'panel' : 'command',
+    snapshot: { throughSeq, anchorSeq: effectiveAnchor },
+  })
   const user = [`以下是这场会话的快照。\n\n${pack.text}`, '', `## 我的问题`, question].join('\n')
 
   const started = Date.now()
@@ -436,7 +446,8 @@ async function askStructured (ctx, store, settings, { sessionId, question, level
 }
 
 async function ask (ctx, store, settings, options) {
-  const result = await askStructured(ctx, store, settings, options)
+  // The command path renders into the 260px plain-text result box.
+  const result = await askStructured(ctx, store, settings, { ...options, format: 'command' })
   return result.text
 }
 
@@ -454,6 +465,8 @@ async function remoteAsk (ctx, store, settings, { sessionId, question, level, mo
     level: usedLevel,
     mode: usedMode,
     anchorSeq: usedAnchor,
+    // The panel renders markdown, so the explainer may write it.
+    format: 'panel',
   })
 
   return {

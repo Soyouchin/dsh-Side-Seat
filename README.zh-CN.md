@@ -123,13 +123,13 @@ config:
 ## 验证
 
 ```bash
-npm test                      # 59 项断言，四个套件
+npm test                      # 68 项断言，四个套件
 node tools/replay.mjs 12000   # 用真实会话日志跑上下文包
 ```
 
-- **59 项断言全绿**：`test/core.test.mjs`（31）、`test/integration.test.mjs`（15）、`test/client.test.mjs`（8，
-  真的执行客户端模块）、`test/package.test.mjs`（5，打包完整性：每个 export 都有对应文件、patch 插入本包、
-  客户端 id 与包名一致、图标自包含）。
+- **68 项断言全绿**：`test/core.test.mjs`（37，分层摘要、按问题检索、硬预算、档位契约、提炼卡、存储隔离、服务绑定）、
+  `test/integration.test.mjs`（18，命令路径、零注入、两步提炼、检索接线、markdown/纯文本分流、导出、诊断）、
+  `test/client.test.mjs`（8，真的执行客户端模块）、`test/package.test.mjs`（5，打包完整性）。
 - **真机跑通**：命令路径端到端约 1.4 秒；面板的 ping 往返通过网关。
 - **未验证**：回答**质量**（只能测形态，测不了对错）；面板除"能渲染"之外的视觉细节——这个环境没有浏览器
   自动化，至今每个 UI 回归都是人点出来的。

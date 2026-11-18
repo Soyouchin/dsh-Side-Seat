@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.0
+
+- **The explainer can see more of the session.** A new retrieval layer (`L1.5`)
+  searches the whole log by the words in your question and puts the matching
+  paragraphs in front of the model at full text, not as a one-line summary. This
+  is what long sessions were missing: the anchor window only covers a few events.
+  Config: `retrievalTokens` (3000) and `retrievalHits` (8).
+- The model is told where the retrieved text came from and to say "I could not
+  find this" instead of guessing from the skeleton.
+- **Markdown**: the panel now renders headings, lists, code blocks, quotes and
+  inline formatting, and the panel prompt asks for markdown. The command result
+  (a 260px plain-text box) still gets plain text — the format is per surface.
+- Tests: 68 assertions.
+
 ## 0.7.0
 
 - An empty completion is retried once instead of failing the question. A

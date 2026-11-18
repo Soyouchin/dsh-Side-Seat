@@ -247,6 +247,85 @@ test('citation validation flags seqs that are not in the snapshot', () => {
   assert.deepEqual(unknown, [999])
 })
 
+// ---------------------------------------------------------------- retrieval
+
+test('queries become CJK bigrams plus latin words, without stopwords', async () => {
+  const { queryTerms } = await import('../lib/retrieve.js')
+  const terms = queryTerms('这个 p 值为什么是 significance 0.03？')
+  assert.ok(terms.includes('significance'))
+  assert.ok(terms.some(term => term.length === 2), 'CJK is indexed by bigrams')
+  assert.ok(!terms.includes('这个'), 'common words are dropped')
+  assert.ok(!terms.includes('的'))
+})
+
+test('retrieval ranks the paragraph that matches the question', async () => {
+  const { selectExcerpts } = await import('../lib/retrieve.js')
+  const rows = [
+    { seq: 1, role: 'user', text: '先看哪种抽样方法？' },
+    { seq: 2, role: 'assistant', text: '用分层抽样，因为批次效应明显。' },
+    { seq: 3, role: 'assistant', text: '今天的天气不错，适合出门散步。' },
+    { seq: 4, role: 'assistant', text: '批次效应需要分层，否则方差被高估。' },
+  ]
+  const { excerpts, matched } = selectExcerpts(rows, '分层抽样怎么处理批次效应？', { limit: 2 })
+  assert.equal(matched, true)
+  assert.equal(excerpts.length, 2)
+  assert.ok(excerpts.every(hit => hit.text.includes('批次')))
+  assert.deepEqual(excerpts.map(hit => hit.seq), [...excerpts.map(hit => hit.seq)].sort((a, b) => a - b))
+})
+
+test('retrieval skips messages already shown and honours its cap', async () => {
+  const { selectExcerpts } = await import('../lib/retrieve.js')
+  const rows = [
+    { seq: 1, role: 'assistant', text: '分层抽样说一遍' },
+    { seq: 2, role: 'assistant', text: '分层抽样再说一遍' },
+    { seq: 3, role: 'assistant', text: '分层抽样第三遍' },
+  ]
+  const { excerpts } = selectExcerpts(rows, '分层抽样', { limit: 5, exclude: new Set([2]) })
+  assert.ok(!excerpts.some(hit => hit.seq === 2), 'an excluded event must not come back')
+  const capped = selectExcerpts(rows, '分层抽样', { limit: 1 })
+  assert.equal(capped.excerpts.length, 1)
+})
+
+test('a pack built with a question carries the retrieved section', () => {
+  // A long log: the paragraph that answers the question is far outside the
+  // anchor window, so only retrieval can bring it back at full text.
+  const long = []
+  let seq = 0
+  for (let turn = 1; turn <= 40; turn++) {
+    const ask = turn === 3 ? '为什么用分层抽样？' : `第 ${turn} 个问题`
+    const answer = turn === 3
+      ? '因为批次效应明显，分层之后组内方差更稳，检验才有意义。'
+      : `第 ${turn} 个回答，内容平淡无奇。`
+    long.push({ type: 'turn/start', seq: seq, data: { turn } })
+    long.push({ type: 'user/message', seq: ++seq, data: { turn, message: { role: 'user', content: [{ type: 'text', text: ask }] } } })
+    long.push({ type: 'assistant/message', seq: ++seq, data: { turn, message: msg(answer) } })
+    long.push({ type: 'turn/end', seq: ++seq, data: { turn, reason: { kind: 'completed' } } })
+    seq++
+  }
+  const anchor = long[long.length - 3].seq
+
+  const pack = buildContextPack(long, { anchorSeq: anchor, question: '分层抽样为什么让方差更稳？' })
+  assert.match(pack.text, /## L1\.5 相关片段/)
+  const section = pack.text.split('## L1.5 相关片段（按问题用词从整场会话检索）')[1].split('## L0 锚点窗口')[0]
+  assert.match(section, /批次效应明显/, 'the matching answer text must be inside the section')
+  assert.ok(pack.retrieval.hits > 0)
+  assert.ok(pack.tokens <= pack.budget)
+})
+
+test('a pack built without a question does not pretend to have retrieved anything', () => {
+  const pack = buildContextPack(log, { anchorSeq: 10 })
+  assert.match(pack.text, /没有与问题用词重叠的内容/)
+  assert.equal(pack.retrieval.hits, 0)
+})
+
+test('markdown output is requested only for the panel', () => {
+  const panel = buildSystemPrompt({ level: 3, format: 'panel' })
+  const command = buildSystemPrompt({ level: 3, format: 'command' })
+  assert.match(panel, /支持 markdown/)
+  assert.match(command, /纯文本/)
+  assert.notEqual(panel, command)
+})
+
 // ---------------------------------------------------------------- remote surface
 
 test('the host manifest is a valid typert contribution with strict codecs', async () => {

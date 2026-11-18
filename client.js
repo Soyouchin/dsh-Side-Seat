@@ -74,6 +74,137 @@ window.__ModuleLoader__.load({
       },
     }
 
+    /**
+     * A small markdown renderer: headings, lists, fenced code, blockquotes,
+     * rules, and inline code / bold / italic / links. No dependency, because a
+     * client plugin cannot import a library from the page.
+     */
+    const INLINE = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|\[[^\]]+\]\([^)\s]+\))/g
+
+    function inline (text, keyBase) {
+      const parts = String(text).split(INLINE)
+      return parts.filter(part => part !== '').map((part, index) => {
+        const key = `${keyBase}-${index}`
+        if (part.startsWith('`') && part.endsWith('`')) {
+          return h('code', {
+            key,
+            style: {
+              fontFamily: 'var(--dsw-font-markdown-code-block-small, monospace)',
+              background: 'var(--dsw-alias-markdown-code-block)',
+              borderRadius: '4px', padding: '0 4px',
+            },
+          }, part.slice(1, -1))
+        }
+        if (part.startsWith('**') && part.endsWith('**')) return h('strong', { key }, part.slice(2, -2))
+        if (part.startsWith('*') && part.endsWith('*')) return h('em', { key }, part.slice(1, -1))
+        const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part)
+        if (link) {
+          return h('a', { key, href: link[2], target: '_blank', rel: 'noreferrer', style: { color: 'var(--dsw-alias-state-business-primary)' } }, link[1])
+        }
+        return h('span', { key }, part)
+      })
+    }
+
+    function renderMarkdown (source) {
+      const lines = String(source ?? '').split('\n')
+      const blocks = []
+      let paragraph = []
+      let list = null // { ordered, items }
+      let code = null // { lines, lang }
+      let key = 0
+
+      const flushParagraph = () => {
+        if (paragraph.length === 0) return
+        const text = paragraph.join(' ')
+        blocks.push(h('p', { key: `p${key++}`, style: { margin: '0 0 8px' } }, inline(text, `p${key}`)))
+        paragraph = []
+      }
+      const flushList = () => {
+        if (list === null) return
+        const tag = list.ordered ? 'ol' : 'ul'
+        blocks.push(h(tag, {
+          key: `l${key++}`,
+          style: { margin: '0 0 8px', paddingLeft: '20px' },
+        }, list.items.map((item, index) => h('li', { key: index, style: { margin: '2px 0' } }, inline(item, `li${index}`)))))
+        list = null
+      }
+      const flushAll = () => { flushParagraph(); flushList() }
+
+      for (const raw of lines) {
+        const line = raw.replace(/\s+$/, '')
+        if (code !== null) {
+          if (line.trim().startsWith('```')) {
+            blocks.push(h('pre', {
+              key: `c${key++}`,
+              style: {
+                margin: '0 0 8px', padding: '8px 10px', overflowX: 'auto',
+                background: 'var(--dsw-alias-markdown-code-block)',
+                border: '0.5px solid var(--dsw-alias-border-l1)', borderRadius: '6px',
+                fontSize: '12px', lineHeight: '1.45', whiteSpace: 'pre',
+              },
+            }, h('code', null, code.lines.join('\n'))))
+            code = null
+          } else {
+            code.lines.push(raw)
+          }
+          continue
+        }
+        if (line.trim().startsWith('```')) { flushAll(); code = { lines: [], lang: line.trim().slice(3) }; continue }
+        if (line.trim() === '') { flushAll(); continue }
+        if (/^\s*(---|\*\*\*|___)\s*$/.test(line)) {
+          flushAll()
+          blocks.push(h('hr', { key: `h${key++}`, style: { border: 0, borderTop: '0.5px solid var(--dsw-alias-border-l1)', margin: '10px 0' } }))
+          continue
+        }
+        const heading = /^(#{1,6})\s+(.*)$/.exec(line)
+        if (heading) {
+          flushAll()
+          const depth = heading[1].length
+          blocks.push(h(`h${Math.min(6, depth + 2)}`, {
+            key: `t${key++}`,
+            style: { margin: '10px 0 6px', fontSize: depth <= 1 ? '14px' : depth === 2 ? '13px' : '12.5px', fontWeight: 600 },
+          }, inline(heading[2], `t${key}`)))
+          continue
+        }
+        const quote = /^>\s?(.*)$/.exec(line)
+        if (quote) {
+          flushAll()
+          blocks.push(h('blockquote', {
+            key: `q${key++}`,
+            style: {
+              margin: '0 0 8px', paddingLeft: '10px', color: 'var(--dsw-alias-label-secondary)',
+              borderLeft: '2px solid var(--dsw-alias-border-l2)',
+            },
+          }, inline(quote[1], `q${key}`)))
+          continue
+        }
+        const unordered = /^\s*[-*+]\s+(.*)$/.exec(line)
+        const ordered = /^\s*\d+[.)]\s+(.*)$/.exec(line)
+        if (unordered || ordered) {
+          flushParagraph()
+          const isOrdered = Boolean(ordered)
+          if (list === null || list.ordered !== isOrdered) { flushList(); list = { ordered: isOrdered, items: [] } }
+          list.items.push((unordered ?? ordered)[1])
+          continue
+        }
+        if (list !== null) flushList()
+        paragraph.push(line.trim())
+      }
+      flushAll()
+      if (code !== null) {
+        blocks.push(h('pre', {
+          key: `c${key++}`,
+          style: {
+            margin: '0 0 8px', padding: '8px 10px', overflowX: 'auto',
+            background: 'var(--dsw-alias-markdown-code-block)',
+            border: '0.5px solid var(--dsw-alias-border-l1)', borderRadius: '6px',
+            fontSize: '12px', lineHeight: '1.45', whiteSpace: 'pre',
+          },
+        }, h('code', null, code.lines.join('\n'))))
+      }
+      return blocks
+    }
+
     return {
       inject: ['slots', 'sidebarRightTabs', 'remote'],
       apply(ctx) {
@@ -206,15 +337,16 @@ window.__ModuleLoader__.load({
             ? h('div', { style: token('tertiary') }, '还没有提问。问一句试试，答案只留在这里。')
             : turns.map((turn, index) => h('div', { key: index, style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
               h('div', { style: { ...token('tertiary'), fontStyle: 'italic' } }, turn.question),
-              h('pre', {
+              h('div', {
                 style: {
-                  margin: 0, whiteSpace: 'pre-wrap', fontSize: '12px', lineHeight: '1.5',
+                  fontSize: '12px', lineHeight: '1.6',
                   color: 'var(--dsw-alias-label-primary)',
                   background: 'var(--dsw-alias-bg-layer-2)',
                   borderLeft: '2px solid var(--dsw-alias-state-business-primary)',
                   borderRadius: '6px', padding: '8px 10px',
+                  overflowWrap: 'anywhere',
                 },
-              }, turn.answer || '')))),
+              }, turn.answer ? renderMarkdown(turn.answer) : null)))),
           note ? h('div', { style: { ...token('secondary'), whiteSpace: 'pre-wrap' } }, note) : null,
           anchor === null || anchor === undefined
             ? null

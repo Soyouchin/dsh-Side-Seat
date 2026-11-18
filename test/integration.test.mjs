@@ -41,7 +41,7 @@ function sessionLog () {
 }
 
 function mockCtx ({ reply = '这是解释。[10]', sessionId } = {}) {
-  const state = { definition: undefined, injected: [], llmCalls: [], disposed: false }
+  const state = { definition: undefined, injected: [], llmCalls: [], disposed: false, services: {} }
   const ctx = {
     commands: {
       register (definition) {
@@ -50,6 +50,8 @@ function mockCtx ({ reply = '这是解释。[10]', sessionId } = {}) {
       },
     },
     effect (fn) { fn() },
+    provide () {},
+    set (name, value) { state.services[name] = value },
     get (name) {
       if (name === 'sessionQuery') {
         return { readSession: async () => ({ events: sessionLog(), inheritedEventCount: 0 }) }
@@ -284,6 +286,39 @@ test('an empty answer that survives the retry says why', async () => {
     assert.match(result.text, /空回答/)
     assert.match(result.text, /finish=stop/)
     assert.match(result.text, /没有产出任何文本/)
+  })
+})
+
+test('the command path asks for plain text, the panel path for markdown', async () => {
+  await scenario(async ({ state, run, agent }) => {
+    await run('这个 p 值 0.03 怎么来的？')
+    assert.match(state.llmCalls[0].system, /纯文本/, 'the command result box renders no markdown')
+
+    const service = state.services.sideSeat
+    assert.ok(service, 'the Remote service must be registered on the context')
+    const result = await service.ask(agent.id, '这个 p 值 0.03 怎么来的？', 3, 'explain', undefined)
+    assert.equal(result.ok, true)
+    assert.match(result.answer, /这是解释/)
+    assert.match(state.llmCalls[state.llmCalls.length - 1].system, /支持 markdown/, 'the panel renders markdown')
+  })
+})
+
+test('the question drives retrieval over the whole log', async () => {
+  await scenario(async ({ state, run }) => {
+    await run('先看哪种抽样方法？')
+    const system = state.llmCalls[0].system
+    assert.match(system, /L1\.5 相关片段/, 'the prompt must explain the retrieved section')
+    const user = state.llmCalls[0].messages[0].content[0].text
+    assert.match(user, /## L1\.5 相关片段/, 'the pack must carry the retrieved section')
+    assert.match(user, /分层抽样/, 'the paragraph that matches the question must be present in full')
+  })
+})
+
+test('a question with no matching words says so instead of pretending', async () => {
+  await scenario(async ({ state, run }) => {
+    await run('zzz 完全没有重叠的词 qqq')
+    const user = state.llmCalls[0].messages[0].content[0].text
+    assert.match(user, /没有与问题用词重叠的内容/)
   })
 })
 
